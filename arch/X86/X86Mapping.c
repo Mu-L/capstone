@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #endif
 
+#include "../../Mapping.h"
+#include "../../MCInstPrinter.h"
 #include "X86Mapping.h"
 #include "X86DisassemblerDecoder.h"
 
@@ -1016,7 +1018,7 @@ void X86_get_insn_id(cs_struct *h, cs_insn *insn, unsigned int id)
 	if (i != -1) {
 		insn->id = insns[i].mapid;
 
-		if (h->detail) {
+		if (h->detail_opt) {
 #ifndef CAPSTONE_DIET
 			memcpy(insn->detail->regs_read, insns[i].regs_use, sizeof(insns[i].regs_use));
 			insn->detail->regs_read_count = (uint8_t)count_positive(insns[i].regs_use);
@@ -1781,6 +1783,24 @@ static bool valid_rep(cs_struct *h, unsigned int opcode)
 	return false;
 }
 
+// given MCInst's id, find if this is a "repz ret" instruction
+// gcc generates "repz ret" (f3 c3) instructions in some cases as an
+// optimization for AMD platforms, see:
+// https://gcc.gnu.org/legacy-ml/gcc-patches/2003-05/msg02117.html
+static bool valid_ret_repz(cs_struct *h, unsigned int opcode)
+{
+	unsigned int id;
+	unsigned int i = find_insn(opcode);
+
+	if (i != -1) {
+		id = insns[i].mapid;
+		return id == X86_INS_RET;
+	}
+
+	// not found
+	return false;
+}
+
 // given MCInst's id, find out if this insn is valid for REPE prefix
 static bool valid_repe(cs_struct *h, unsigned int opcode)
 {
@@ -1844,7 +1864,7 @@ static bool valid_notrack(cs_struct *h, unsigned int opcode)
 // add *CX register to regs_read[] & regs_write[]
 static void add_cx(MCInst *MI)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		x86_reg cx;
 
 		if (MI->csh->mode & CS_MODE_16)
@@ -1935,6 +1955,8 @@ bool X86_lockrep(MCInst *MI, SStream *O)
 			} else if (valid_repe(MI->csh, opcode)) {
 				SStream_concat(O, "repe|");
 				add_cx(MI);
+			} else if (valid_ret_repz(MI->csh, opcode)) {
+				SStream_concat(O, "repz|");
 			} else {
 				// invalid prefix
 				MI->x86_prefix[0] = 0;
@@ -1980,7 +2002,7 @@ bool X86_lockrep(MCInst *MI, SStream *O)
 	}
 
 	// copy normalized prefix[] back to x86.prefix[]
-	if (MI->csh->detail)
+	if (MI->csh->detail_opt)
 		memcpy(MI->flat_insn->detail->x86.prefix, MI->x86_prefix, ARR_SIZE(MI->x86_prefix));
 
 	return res;
@@ -1988,7 +2010,7 @@ bool X86_lockrep(MCInst *MI, SStream *O)
 
 void op_addReg(MCInst *MI, int reg)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count].type = X86_OP_REG;
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count].reg = reg;
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count].size = MI->csh->regsize_map[reg];
@@ -2001,7 +2023,7 @@ void op_addReg(MCInst *MI, int reg)
 
 void op_addImm(MCInst *MI, int v)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count].type = X86_OP_IMM;
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count].imm = v;
 		// if op_count > 0, then this operand's size is taken from the destination op
@@ -2021,28 +2043,28 @@ void op_addImm(MCInst *MI, int v)
 
 void op_addXopCC(MCInst *MI, int v)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.xop_cc = v;
 	}
 }
 
 void op_addSseCC(MCInst *MI, int v)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.sse_cc = v;
 	}
 }
 
 void op_addAvxCC(MCInst *MI, int v)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.avx_cc = v;
 	}
 }
 
 void op_addAvxRoundingMode(MCInst *MI, int v)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.avx_rm = v;
 	}
 }
@@ -2050,7 +2072,7 @@ void op_addAvxRoundingMode(MCInst *MI, int v)
 // below functions supply details to X86GenAsmWriter*.inc
 void op_addAvxZeroOpmask(MCInst *MI)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		// link with the previous operand
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count - 1].avx_zero_opmask = true;
 	}
@@ -2058,14 +2080,14 @@ void op_addAvxZeroOpmask(MCInst *MI)
 
 void op_addAvxSae(MCInst *MI)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		MI->flat_insn->detail->x86.avx_sae = true;
 	}
 }
 
 void op_addAvxBroadcast(MCInst *MI, x86_avx_bcast v)
 {
-	if (MI->csh->detail) {
+	if (MI->csh->detail_opt) {
 		// link with the previous operand
 		MI->flat_insn->detail->x86.operands[MI->flat_insn->detail->x86.op_count - 1].avx_bcast = v;
 	}

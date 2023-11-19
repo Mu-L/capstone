@@ -52,10 +52,10 @@ struct platform platforms[] = {
 		},
 		{
 				// item 7
-				CS_ARCH_ARM64,
+				CS_ARCH_AARCH64,
 				(cs_mode) 0,
-				"ARM-64",
-				"arm64"
+				"AARCH64",
+				"aarch64"
 		},
 		{
 				// item 8
@@ -329,6 +329,13 @@ struct platform platforms[] = {
 				CS_MODE_64 | CS_MODE_BIG_ENDIAN | CS_MODE_QPX,
 				"ppc+qpx",
 				"ppc64beqpx"
+		},
+		{
+				//item 46
+				CS_ARCH_PPC,
+				CS_MODE_32 | CS_MODE_BIG_ENDIAN | CS_MODE_PS,
+				"ppc+ps",
+				"ppc32beps"
 		},
 		{
 				CS_ARCH_TRICORE,

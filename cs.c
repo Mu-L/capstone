@@ -25,7 +25,7 @@
 
 // Issue #681: Windows kernel does not support formatting float point
 #if defined(_KERNEL_MODE) && !defined(CAPSTONE_DIET)
-#if defined(CAPSTONE_HAS_ARM) || defined(CAPSTONE_HAS_ARM64) || defined(CAPSTONE_HAS_M68K)
+#if defined(CAPSTONE_HAS_ARM) || defined(CAPSTONE_HAS_AARCH64) || defined(CAPSTONE_HAS_M68K)
 #define CAPSTONE_STR_INTERNAL(x) #x
 #define CAPSTONE_STR(x) CAPSTONE_STR_INTERNAL(x)
 #define CAPSTONE_MSVC_WRANING_PREFIX __FILE__ "("CAPSTONE_STR(__LINE__)") : warning message : "
@@ -90,7 +90,7 @@ static const struct {
 #else
 	{ NULL, NULL, 0 },
 #endif
-#ifdef CAPSTONE_HAS_ARM64
+#ifdef CAPSTONE_HAS_AARCH64
 	{
 		AArch64_global_init,
 		AArch64_option,
@@ -123,7 +123,7 @@ static const struct {
 		PPC_global_init,
 		PPC_option,
 		~(CS_MODE_LITTLE_ENDIAN | CS_MODE_32 | CS_MODE_64 | CS_MODE_BIG_ENDIAN
-				| CS_MODE_QPX | CS_MODE_PS),
+				| CS_MODE_QPX | CS_MODE_PS | CS_MODE_BOOKE),
 	},
 #else
 	{ NULL, NULL, 0 },
@@ -262,8 +262,8 @@ static const uint32_t all_arch = 0
 #ifdef CAPSTONE_HAS_ARM
 	| (1 << CS_ARCH_ARM)
 #endif
-#ifdef CAPSTONE_HAS_ARM64
-	| (1 << CS_ARCH_ARM64)
+#if defined(CAPSTONE_HAS_AARCH64) || defined(CAPSTONE_HAS_ARM64)
+	| (1 << CS_ARCH_AARCH64)
 #endif
 #ifdef CAPSTONE_HAS_MIPS
 	| (1 << CS_ARCH_MIPS)
@@ -315,26 +315,27 @@ static const uint32_t all_arch = 0
 #endif
 ;
 
+
 #if defined(CAPSTONE_USE_SYS_DYN_MEM)
 #if !defined(CAPSTONE_HAS_OSXKERNEL) && !defined(_KERNEL_MODE)
 // default
-thread_local cs_malloc_t cs_mem_malloc = malloc;
-thread_local cs_calloc_t cs_mem_calloc = calloc;
-thread_local cs_realloc_t cs_mem_realloc = realloc;
-thread_local cs_free_t cs_mem_free = free;
+cs_malloc_t cs_mem_malloc = malloc;
+cs_calloc_t cs_mem_calloc = calloc;
+cs_realloc_t cs_mem_realloc = realloc;
+cs_free_t cs_mem_free = free;
 #if defined(_WIN32_WCE)
-thread_local cs_vsnprintf_t cs_vsnprintf = _vsnprintf;
+cs_vsnprintf_t cs_vsnprintf = _vsnprintf;
 #else
-thread_local cs_vsnprintf_t cs_vsnprintf = vsnprintf;
+cs_vsnprintf_t cs_vsnprintf = vsnprintf;
 #endif  // defined(_WIN32_WCE)
 
 #elif defined(_KERNEL_MODE)
 // Windows driver
-thread_local cs_malloc_t cs_mem_malloc = cs_winkernel_malloc;
-thread_local cs_calloc_t cs_mem_calloc = cs_winkernel_calloc;
-thread_local cs_realloc_t cs_mem_realloc = cs_winkernel_realloc;
-thread_local cs_free_t cs_mem_free = cs_winkernel_free;
-thread_local cs_vsnprintf_t cs_vsnprintf = cs_winkernel_vsnprintf;
+cs_malloc_t cs_mem_malloc = cs_winkernel_malloc;
+cs_calloc_t cs_mem_calloc = cs_winkernel_calloc;
+cs_realloc_t cs_mem_realloc = cs_winkernel_realloc;
+cs_free_t cs_mem_free = cs_winkernel_free;
+cs_vsnprintf_t cs_vsnprintf = cs_winkernel_vsnprintf;
 #else
 // OSX kernel
 extern void* kern_os_malloc(size_t size);
@@ -346,19 +347,19 @@ static void* cs_kern_os_calloc(size_t num, size_t size)
 	return kern_os_malloc(num * size); // malloc bzeroes the buffer
 }
 
-thread_local cs_malloc_t cs_mem_malloc = kern_os_malloc;
-thread_local cs_calloc_t cs_mem_calloc = cs_kern_os_calloc;
-thread_local cs_realloc_t cs_mem_realloc = kern_os_realloc;
-thread_local cs_free_t cs_mem_free = kern_os_free;
-thread_local cs_vsnprintf_t cs_vsnprintf = vsnprintf;
+cs_malloc_t cs_mem_malloc = kern_os_malloc;
+cs_calloc_t cs_mem_calloc = cs_kern_os_calloc;
+cs_realloc_t cs_mem_realloc = kern_os_realloc;
+cs_free_t cs_mem_free = kern_os_free;
+cs_vsnprintf_t cs_vsnprintf = vsnprintf;
 #endif  // !defined(CAPSTONE_HAS_OSXKERNEL) && !defined(_KERNEL_MODE)
 #else
 // User-defined
-thread_local cs_malloc_t cs_mem_malloc = NULL;
-thread_local cs_calloc_t cs_mem_calloc = NULL;
-thread_local cs_realloc_t cs_mem_realloc = NULL;
-thread_local cs_free_t cs_mem_free = NULL;
-thread_local cs_vsnprintf_t cs_vsnprintf = NULL;
+cs_malloc_t cs_mem_malloc = NULL;
+cs_calloc_t cs_mem_calloc = NULL;
+cs_realloc_t cs_mem_realloc = NULL;
+cs_free_t cs_mem_free = NULL;
+cs_vsnprintf_t cs_vsnprintf = NULL;
 
 #endif  // defined(CAPSTONE_USE_SYS_DYN_MEM)
 
@@ -377,7 +378,8 @@ CAPSTONE_EXPORT
 bool CAPSTONE_API cs_support(int query)
 {
 	if (query == CS_ARCH_ALL)
-		return all_arch == ((1 << CS_ARCH_ARM)   | (1 << CS_ARCH_ARM64)      |
+		return all_arch ==
+				    ((1 << CS_ARCH_ARM)  | (1 << CS_ARCH_AARCH64)    |
 				    (1 << CS_ARCH_MIPS)  | (1 << CS_ARCH_X86)        |
 				    (1 << CS_ARCH_PPC)   | (1 << CS_ARCH_SPARC)      |
 				    (1 << CS_ARCH_SYSZ)  | (1 << CS_ARCH_XCORE)      |
@@ -488,7 +490,7 @@ cs_err CAPSTONE_API cs_open(cs_arch arch, cs_mode mode, csh *handle)
 		ud->arch = arch;
 		ud->mode = mode;
 		// by default, do not break instruction into details
-		ud->detail = CS_OPT_OFF;
+		ud->detail_opt = CS_OPT_OFF;
 
 		// default skipdata setup
 		ud->skipdata_setup.mnemonic = SKIPDATA_MNEM;
@@ -561,6 +563,27 @@ static int str_replace(char *result, char *target, const char *str1, char *str2)
 		return -1;
 }
 
+/// The asm string sometimes has a leading space or tab.
+/// Here we remove it.
+static void fixup_asm_string(char *asm_str) {
+	if (!asm_str) {
+		return;
+	}
+	int i = 0;
+	int k = 0;
+	bool text_reached = (asm_str[0] != ' ' && asm_str[0] != '\t');
+	while (asm_str[i]) {
+		if (!text_reached && (asm_str[i] == ' ' || asm_str[i] == '\t')) {
+			++i;
+			text_reached = true;
+			continue;
+		}
+		asm_str[k] = asm_str[i];
+		++k, ++i;
+	}
+	asm_str[k] = '\0';
+}
+
 // fill insn with mnemonic & operands info
 static void fill_insn(struct cs_struct *handle, cs_insn *insn, char *buffer, MCInst *mci,
 		PostPrinter_t postprinter, const uint8_t *code)
@@ -568,6 +591,7 @@ static void fill_insn(struct cs_struct *handle, cs_insn *insn, char *buffer, MCI
 #ifndef CAPSTONE_DIET
 	char *sp, *mnem;
 #endif
+	fixup_asm_string(buffer);
 	uint16_t copy_size = MIN(sizeof(insn->bytes), insn->size);
 
 	// fill the instruction bytes.
@@ -586,6 +610,7 @@ static void fill_insn(struct cs_struct *handle, cs_insn *insn, char *buffer, MCI
 
 #ifndef CAPSTONE_DIET
 	mnem = insn->mnemonic;
+	// memset(mnem, 0, CS_MNEMONIC_SIZE);
 	for (sp = buffer; *sp; sp++) {
 		if (*sp == ' '|| *sp == '\t')
 			break;
@@ -644,7 +669,7 @@ static uint8_t skipdata_size(cs_struct *handle)
 				return 2;
 			// otherwise, skip 4 bytes
 			return 4;
-		case CS_ARCH_ARM64:
+		case CS_ARCH_AARCH64:
 		case CS_ARCH_MIPS:
 		case CS_ARCH_PPC:
 		case CS_ARCH_SPARC:
@@ -729,7 +754,7 @@ cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
 			return CS_ERR_OK;
 
 		case CS_OPT_DETAIL:
-			handle->detail = (cs_opt_value)value;
+			handle->detail_opt |= (cs_opt_value)value;
 			return CS_ERR_OK;
 
 		case CS_OPT_SKIPDATA:
@@ -813,6 +838,10 @@ cs_err CAPSTONE_API cs_option(csh ud, cs_opt_type type, size_t value)
 				return CS_ERR_OPTION;
 			}
 			break;
+		case CS_OPT_NO_BRANCH_OFFSET:
+			if (handle->PrintBranchImmNotAsAddress)
+				return CS_ERR_OK;
+			break;
 	}
 
 	return arch_configs[handle->arch].arch_option(handle, type, value);
@@ -881,10 +910,6 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
 
 	handle->errnum = CS_ERR_OK;
 
-	// reset IT block of ARM structure
-	if (handle->arch == CS_ARCH_ARM)
-		handle->ITBlock.size = 0;
-
 #ifdef CAPSTONE_USE_SYS_DYN_MEM
 	if (count > 0 && count <= INSN_CACHE_SIZE)
 		cache_size = (unsigned int) count;
@@ -896,7 +921,7 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
 	size_org = size;
 
 	total_size = sizeof(cs_insn) * cache_size;
-	total = cs_mem_malloc(total_size);
+	total = cs_mem_calloc(sizeof(cs_insn), cache_size);
 	if (total == NULL) {
 		// insufficient memory
 		handle->errnum = CS_ERR_MEM;
@@ -912,7 +937,7 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
 		// relative branches need to know the address & size of current insn
 		mci.address = offset;
 
-		if (handle->detail) {
+		if (handle->detail_opt) {
 			// allocate memory for @detail pointer
 			insn_cache->detail = cs_mem_malloc(sizeof(cs_detail));
 		} else {
@@ -951,7 +976,7 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
 			// encounter a broken instruction
 
 			// free memory of @detail pointer
-			if (handle->detail) {
+			if (handle->detail_opt) {
 				cs_mem_free(insn_cache->detail);
 			}
 
@@ -1006,7 +1031,7 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
 			total_size += (sizeof(cs_insn) * cache_size);
 			tmp = cs_mem_realloc(total, total_size);
 			if (tmp == NULL) {	// insufficient memory
-				if (handle->detail) {
+				if (handle->detail_opt) {
 					insn_cache = (cs_insn *)total;
 					for (i = 0; i < c; i++, insn_cache++)
 						cs_mem_free(insn_cache->detail);
@@ -1041,7 +1066,7 @@ size_t CAPSTONE_API cs_disasm(csh ud, const uint8_t *buffer, size_t size, uint64
 		tmp = cs_mem_realloc(total, total_size - (cache_size - f) * sizeof(*insn_cache));
 		if (tmp == NULL) {	// insufficient memory
 			// free all detail pointers
-			if (handle->detail) {
+			if (handle->detail_opt) {
 				insn_cache = (cs_insn *)total;
 				for (i = 0; i < c; i++, insn_cache++)
 					cs_mem_free(insn_cache->detail);
@@ -1087,7 +1112,7 @@ cs_insn * CAPSTONE_API cs_malloc(csh ud)
 		handle->errnum = CS_ERR_MEM;
 		return NULL;
 	} else {
-		if (handle->detail) {
+		if (handle->detail_opt) {
 			// allocate memory for @detail pointer
 			insn->detail = cs_mem_malloc(sizeof(cs_detail));
 			if (insn->detail == NULL) {	// insufficient memory
@@ -1244,7 +1269,7 @@ bool CAPSTONE_API cs_insn_group(csh ud, const cs_insn *insn, unsigned int group_
 
 	handle = (struct cs_struct *)(uintptr_t)ud;
 
-	if (!handle->detail) {
+	if (!handle->detail_opt) {
 		handle->errnum = CS_ERR_DETAIL;
 		return false;
 	}
@@ -1271,7 +1296,7 @@ bool CAPSTONE_API cs_reg_read(csh ud, const cs_insn *insn, unsigned int reg_id)
 
 	handle = (struct cs_struct *)(uintptr_t)ud;
 
-	if (!handle->detail) {
+	if (!handle->detail_opt) {
 		handle->errnum = CS_ERR_DETAIL;
 		return false;
 	}
@@ -1298,7 +1323,7 @@ bool CAPSTONE_API cs_reg_write(csh ud, const cs_insn *insn, unsigned int reg_id)
 
 	handle = (struct cs_struct *)(uintptr_t)ud;
 
-	if (!handle->detail) {
+	if (!handle->detail_opt) {
 		handle->errnum = CS_ERR_DETAIL;
 		return false;
 	}
@@ -1326,7 +1351,7 @@ int CAPSTONE_API cs_op_count(csh ud, const cs_insn *insn, unsigned int op_type)
 
 	handle = (struct cs_struct *)(uintptr_t)ud;
 
-	if (!handle->detail) {
+	if (!handle->detail_opt) {
 		handle->errnum = CS_ERR_DETAIL;
 		return -1;
 	}
@@ -1352,9 +1377,9 @@ int CAPSTONE_API cs_op_count(csh ud, const cs_insn *insn, unsigned int op_type)
 				if (insn->detail->arm.operands[i].type == (arm_op_type)op_type)
 					count++;
 			break;
-		case CS_ARCH_ARM64:
-			for (i = 0; i < insn->detail->arm64.op_count; i++)
-				if (insn->detail->arm64.operands[i].type == (arm64_op_type)op_type)
+		case CS_ARCH_AARCH64:
+			for (i = 0; i < insn->detail->aarch64.op_count; i++)
+				if (insn->detail->aarch64.operands[i].type == (aarch64_op_type)op_type)
 					count++;
 			break;
 		case CS_ARCH_X86:
@@ -1445,7 +1470,7 @@ int CAPSTONE_API cs_op_index(csh ud, const cs_insn *insn, unsigned int op_type,
 
 	handle = (struct cs_struct *)(uintptr_t)ud;
 
-	if (!handle->detail) {
+	if (!handle->detail_opt) {
 		handle->errnum = CS_ERR_DETAIL;
 		return -1;
 	}
@@ -1474,9 +1499,9 @@ int CAPSTONE_API cs_op_index(csh ud, const cs_insn *insn, unsigned int op_type,
 					return i;
 			}
 			break;
-		case CS_ARCH_ARM64:
-			for (i = 0; i < insn->detail->arm64.op_count; i++) {
-				if (insn->detail->arm64.operands[i].type == (arm64_op_type)op_type)
+		case CS_ARCH_AARCH64:
+			for (i = 0; i < insn->detail->aarch64.op_count; i++) {
+				if (insn->detail->aarch64.operands[i].type == (aarch64_op_type)op_type)
 					count++;
 				if (count == post)
 					return i;
@@ -1634,7 +1659,7 @@ cs_err CAPSTONE_API cs_regs_access(csh ud, const cs_insn *insn,
 	handle->errnum = CS_ERR_DIET;
 	return CS_ERR_DIET;
 #else
-	if (!handle->detail) {
+	if (!handle->detail_opt) {
 		handle->errnum = CS_ERR_DETAIL;
 		return CS_ERR_DETAIL;
 	}
